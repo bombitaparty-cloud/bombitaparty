@@ -1,0 +1,11 @@
+.env*
+!.env.example
+.data
+public/uploads
+
+# Raw camera footage (compressed copies are in public/videos)
+public/videos/*.MOV
+public/videos/*.mov
+
+# Raw media waiting to be imported (never deployed or committed)
+media-import/
