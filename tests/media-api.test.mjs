@@ -309,3 +309,20 @@ test("albums: admin-only details, chosen cover, cover cleared when the photo mov
   facet = (await json("/api/gallery/dates")).body.dates.find((d) => d.date === date);
   assert.equal(facet.albumTitle, null);
 });
+
+test("albums without photos show as 'coming soon' and vanish when removed", async () => {
+  const date = "2025-08-30";
+  await json("/api/admin/albums", { method: "PUT", body: JSON.stringify({ date, title: "The Legends", category: "Bombita Nights" }), headers: adminHeaders });
+  const facet = (await json("/api/gallery/dates")).body.dates.find((d) => d.date === date);
+  assert.ok(facet, "empty album listed");
+  assert.equal(facet.count, 0);
+  assert.equal(facet.albumTitle, "The Legends");
+  assert.equal(facet.cover, null);
+  const page = await (await get("/photos", { headers: { cookie: "bombita_member=1" } })).text();
+  assert.match(page, /The Legends, New York, August 2025, photos coming soon/);
+  // Filtered views are about real photos: the empty album isn't included there.
+  assert.ok(!(await json("/api/gallery/dates?type=image")).body.dates.some((d) => d.date === date));
+  assert.equal((await json(`/api/gallery?date=${date}`)).body.items.length, 0);
+  await json("/api/admin/albums", { method: "DELETE", body: JSON.stringify({ date }), headers: adminHeaders });
+  assert.ok(!(await json("/api/gallery/dates")).body.dates.some((d) => d.date === date), "gone after removal");
+});

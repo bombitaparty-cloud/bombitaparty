@@ -1,12 +1,14 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Camera, Loader2, Play, X } from "lucide-react";
 import type { GalleryAlbum, GalleryItem, GalleryPage } from "@/lib/media/types";
 import { useLenis } from "@/components/animations/Providers";
 import { cn } from "@/lib/utils";
 import { MediaLightbox } from "./MediaLightbox";
+import { LOGO } from "@/components/ui/Logo";
 
 const ALBUM_STEP = 12;
 const PHOTO_STEP = 24;
@@ -24,9 +26,15 @@ const AlbumCard = memo(function AlbumCard({ album, eager, onOpen }: { album: Gal
       type="button"
       onClick={onOpen}
       data-cursor="Open"
-      aria-label={`${album.title}, ${album.place}, ${monthYear(album.date, true)}, ${album.count} ${album.count === 1 ? "item" : "photos"}`}
+      aria-label={`${album.title}, ${album.place}, ${monthYear(album.date, true)}, ${album.count ? `${album.count} ${album.count === 1 ? "item" : "photos"}` : "photos coming soon"}`}
       className="group relative block aspect-[4/5] w-full overflow-hidden bg-ink-900 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-300"
     >
+      {!album.cover && (
+        // Album created in the admin, photos not published yet: branded placeholder.
+        <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(70%_60%_at_50%_35%,rgba(224,185,79,.22),transparent_70%),linear-gradient(180deg,#1a1410,#050505)]">
+          <Image src={LOGO.logo.src} width={LOGO.logo.width} height={LOGO.logo.height} sizes="200px" alt="" className="h-auto w-3/5 opacity-85 transition-transform duration-700 group-hover:scale-105" />
+        </span>
+      )}
       {album.cover && (
         // eslint-disable-next-line @next/next/no-img-element -- pre-optimized 480 px WebP from the media API
         <img
@@ -40,7 +48,7 @@ const AlbumCard = memo(function AlbumCard({ album, eager, onOpen }: { album: Gal
       )}
       <span className="absolute inset-0 bg-gradient-to-t from-ink-950/95 via-ink-950/25 to-transparent" />
       <span className="absolute right-2 top-2 border border-white/20 bg-ink-950/70 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.16em] text-white/85">
-        {album.count} {album.videos && !album.images ? "videos" : "photos"}
+        {album.count ? `${album.count} ${album.videos && !album.images ? "videos" : "photos"}` : "Photos coming soon"}
       </span>
       <span className="absolute inset-x-0 bottom-0 p-3 md:p-4">
         <span className="block font-display text-2xl uppercase leading-[0.95] tracking-wide text-white transition-colors group-hover:text-gold-300 md:text-3xl">
@@ -69,6 +77,12 @@ function AlbumSheet({ album, onClose }: { album: GalleryAlbum; onClose: () => vo
   // First page whenever the album (or a retry) changes.
   useEffect(() => {
     let live = true;
+    if (album.count === 0) {
+      queueMicrotask(() => live && setState("idle"));
+      return () => {
+        live = false;
+      };
+    }
     fetch(`/api/gallery?date=${album.date}&limit=${PHOTO_STEP}`)
       .then((r) => (r.ok ? (r.json() as Promise<GalleryPage>) : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((page) => {
@@ -81,7 +95,7 @@ function AlbumSheet({ album, onClose }: { album: GalleryAlbum; onClose: () => vo
     return () => {
       live = false;
     };
-  }, [album.date, tick]);
+  }, [album.count, album.date, tick]);
 
   const more = useCallback(async () => {
     if (!cursor || state === "loading") return;
@@ -129,7 +143,7 @@ function AlbumSheet({ album, onClose }: { album: GalleryAlbum; onClose: () => vo
             {album.title}
           </h2>
           <p className="mt-1 text-xs text-white/75 md:text-sm">
-            {album.place}, {monthYear(album.date, true)} · {dayLabel(album.date)} · {album.count} {album.count === 1 ? "photo" : "photos"}
+            {album.place}, {monthYear(album.date, true)} · {dayLabel(album.date)} · {album.count ? `${album.count} ${album.count === 1 ? "photo" : "photos"}` : "photos coming soon"}
           </p>
         </div>
         <button
@@ -143,6 +157,13 @@ function AlbumSheet({ album, onClose }: { album: GalleryAlbum; onClose: () => vo
       </header>
 
       <div className="px-1 pb-16 pt-1 md:px-4 md:pt-4">
+        {album.count === 0 && (
+          <div className="mx-auto mt-16 flex max-w-md flex-col items-center px-6 text-center">
+            <Camera className="h-8 w-8 text-gold-300" aria-hidden />
+            <p className="mt-4 font-display text-4xl uppercase tracking-wide">Photos coming soon</p>
+            <p className="mt-2 text-sm text-mute">The recap from this night is on its way. Check back shortly — or tag @bombitaparty with your shots.</p>
+          </div>
+        )}
         <ul className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:gap-2 lg:grid-cols-4">
           {items.map((it, i) => (
             <li key={it.id}>

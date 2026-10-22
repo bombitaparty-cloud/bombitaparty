@@ -152,8 +152,22 @@ export async function galleryFacets(filters: Pick<GalleryFilters, "type" | "cate
     db.query(`SELECT category AS name, count(*)::int AS count FROM media_public_assets WHERE category IS NOT NULL GROUP BY category ORDER BY count DESC, category`),
     db.query(`SELECT slug, min(name) AS name, count(*)::int AS count FROM media_public_asset_tags GROUP BY slug ORDER BY count DESC, slug LIMIT 50`),
   ]);
+  // Albums the admin created that have no published photos yet show as "coming soon"
+  // (only on the unfiltered view — a type/category/tag filter is about actual photos).
+  const pending =
+    where.length === 0
+      ? (
+          await db.query(
+            `SELECT al.album_date AS date, 0 AS count, 0 AS images, 0 AS videos, al.category, NULL AS event,
+                    al.title AS "albumTitle", al.venue, al.city, NULL AS cover
+               FROM media_public_albums al
+              WHERE NOT EXISTS (SELECT 1 FROM media_public_assets a WHERE a.gallery_date = al.album_date)`,
+          )
+        ).rows
+      : [];
+  const all = [...dates.rows, ...pending].sort((x, y) => String(y.date).localeCompare(String(x.date)));
   return {
-    dates: dates.rows as GalleryFacets["dates"],
+    dates: all as GalleryFacets["dates"],
     categories: cats.rows as GalleryFacets["categories"],
     tags: tags.rows as GalleryFacets["tags"],
     total: dates.rows.reduce((n, r) => n + (r.count as number), 0),
