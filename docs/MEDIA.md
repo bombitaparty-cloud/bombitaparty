@@ -127,6 +127,10 @@ How it behaves:
 import. Google Photos shared albums can't be scripted; use the album's
 "Download all" while signed in.
 
+### Albums (one per night)
+
+**Admin → Media → Albums** lists every night that has photos or saved album details. **New album** sets the night's date, title, venue, city and category. **Upload** points the uploader at that night. **Photos** filters the library to it. To choose the album thumbnail, open any photo in the library and click **Use as album cover**; without a chosen cover, the night's first photo is used. Albums are stored in `media_albums` (migration `0002_albums`). An album stays hidden on `/photos` until it has published photos. Removing an album's details never deletes its photos.
+
 ### From the admin (smaller batches, any device)
 
 **Admin → Media → Upload**:

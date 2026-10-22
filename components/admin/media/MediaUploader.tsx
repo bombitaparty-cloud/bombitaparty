@@ -28,9 +28,28 @@ const CONCURRENCY = 3;
  * capture date → YYYY-MM-DD folder name → the fallback date. Files with no
  * date and no fallback wait for one instead of getting a made-up date.
  */
-export function MediaUploader({ storage, flow, access, onDone }: { storage: "blob" | "local" | "readonly"; flow: "token" | "presigned"; access: "public" | "private"; onDone: () => void }) {
+export function MediaUploader({
+  storage,
+  flow,
+  access,
+  onDone,
+  eventDate: targetDate,
+  onEventDateChange,
+  albumTitle,
+}: {
+  storage: "blob" | "local" | "readonly";
+  flow: "token" | "presigned";
+  access: "public" | "private";
+  onDone: () => void;
+  /** Controlled "event night" (set from the Albums panel). */
+  eventDate?: string;
+  onEventDateChange?: (date: string) => void;
+  albumTitle?: string | null;
+}) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [eventDate, setEventDate] = useState("");
+  const [ownDate, setOwnDate] = useState("");
+  const eventDate = targetDate ?? ownDate;
+  const setEventDate = onEventDateChange ?? setOwnDate;
   const [fallbackDate, setFallbackDate] = useState("");
   const [category, setCategory] = useState("");
   const [tags, setTags] = useState("");
@@ -206,6 +225,14 @@ export function MediaUploader({ storage, flow, access, onDone }: { storage: "blo
           Publish right away
         </label>
       </div>
+      {eventDate && (
+        <p className="mt-3 border border-gold-400/40 bg-gold-400/10 px-3 py-2 text-sm text-gold-200">
+          Uploading into <strong>{albumTitle || "the album"}</strong> — {new Date(`${eventDate}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}.{" "}
+          <button type="button" onClick={() => setEventDate("")} className="underline underline-offset-2 hover:text-white">
+            Clear
+          </button>
+        </p>
+      )}
       <p className="mt-2 text-xs text-mute-2">Event night overrides photo dates for the whole batch. Leave it empty to group by each photo&apos;s capture date.</p>
 
       <div

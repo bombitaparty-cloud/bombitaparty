@@ -45,6 +45,10 @@ export interface GalleryDateSummary {
   /** Most common category that night, and the linked event slug (if any). */
   category: string | null;
   event: string | null;
+  /** Saved in Admin → Media → Albums (null when the night has no album details). */
+  albumTitle: string | null;
+  venue: string | null;
+  city: string | null;
 }
 
 /** A gallery album = one night: shown as a card, opened as a sheet. */

@@ -269,3 +269,43 @@ test("gallery page: gate for visitors, one album per night for members", async (
   assert.match(member, /Day Parties, New York, September 2026/);
 });
 
+
+test("albums: admin-only details, chosen cover, cover cleared when the photo moves, delete keeps photos", async () => {
+  const date = "2026-09-20";
+  for (const [method, body] of [["GET"], ["PUT", { date, title: "x" }], ["PATCH", { coverAssetId: crypto.randomUUID() }], ["DELETE", { date }]]) {
+    const r = await get("/api/admin/albums", { method, body: body && JSON.stringify(body), headers: { "x-bombita-admin": "1" } });
+    assert.equal(r.status, 401, `${method} without session`);
+  }
+  assert.equal((await json("/api/admin/albums", { method: "PUT", body: JSON.stringify({ date, title: "" }), headers: adminHeaders })).status, 400, "title required");
+  assert.equal((await json("/api/admin/albums", { method: "PUT", body: JSON.stringify({ date: "nope", title: "x" }), headers: adminHeaders })).status, 400, "date validated");
+
+  const saved = await json("/api/admin/albums", { method: "PUT", body: JSON.stringify({ date, title: "Rooftop Session", venue: "Radio Hotel Rooftop", category: "Day Parties" }), headers: adminHeaders });
+  assert.equal(saved.status, 200);
+  const listed = (await json("/api/admin/albums", { headers: adminHeaders })).body.albums.find((a) => a.date === date);
+  assert.equal(listed.title, "Rooftop Session");
+  assert.ok(listed.total >= 1 && listed.saved);
+
+  const night = (await json(`/api/gallery?date=${date}&limit=60`)).body.items;
+  const pick = night.at(-1);
+  assert.equal((await json("/api/admin/albums", { method: "PATCH", body: JSON.stringify({ coverAssetId: pick.id }), headers: adminHeaders })).status, 200);
+  let facet = (await json("/api/gallery/dates")).body.dates.find((d) => d.date === date);
+  assert.equal(facet.albumTitle, "Rooftop Session");
+  assert.equal(facet.venue, "Radio Hotel Rooftop");
+  assert.equal(facet.cover, pick.thumb.url, "chosen photo is the album thumbnail");
+  const page = await (await get("/photos", { headers: { cookie: "bombita_member=1" } })).text();
+  assert.match(page, /Rooftop Session, Radio Hotel Rooftop, New York, September 2026/);
+
+  // Moving the cover photo to another night clears it as this album's cover.
+  await json("/api/admin/media", { method: "PATCH", body: JSON.stringify({ ids: [pick.id], patch: { galleryDate: "2026-09-21" } }), headers: adminHeaders });
+  facet = (await json("/api/gallery/dates")).body.dates.find((d) => d.date === date);
+  assert.ok(!facet || facet.cover !== pick.thumb.url, "cover no longer points at the moved photo");
+  const after = (await json("/api/admin/albums", { headers: adminHeaders })).body.albums.find((a) => a.date === date);
+  assert.equal(after.coverAssetId, null);
+  await json("/api/admin/media", { method: "PATCH", body: JSON.stringify({ ids: [pick.id], patch: { galleryDate: date } }), headers: adminHeaders });
+
+  // Deleting album details keeps the photos; the night falls back to its category.
+  assert.equal((await json("/api/admin/albums", { method: "DELETE", body: JSON.stringify({ date }), headers: adminHeaders })).status, 200);
+  assert.equal((await json(`/api/gallery?date=${date}&limit=60`)).body.items.length, night.length);
+  facet = (await json("/api/gallery/dates")).body.dates.find((d) => d.date === date);
+  assert.equal(facet.albumTitle, null);
+});

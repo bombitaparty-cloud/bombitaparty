@@ -6,6 +6,7 @@ import type { AdminMediaItem, MediaStats } from "@/lib/media/types";
 import { cn } from "@/lib/utils";
 import { CATEGORY_SUGGESTIONS } from "./constants";
 import { MediaUploader } from "./MediaUploader";
+import { AlbumsPanel } from "./AlbumsPanel";
 import { adminFetch, formatBytes } from "./client";
 
 interface ListResponse {
@@ -54,6 +55,20 @@ function Editor({ item, onClose, onSaved }: { item: AdminMediaItem; onClose: () 
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  async function makeCover() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await adminFetch("/api/admin/albums", { method: "PATCH", body: JSON.stringify({ coverAssetId: item.id }) });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not set the cover");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -160,7 +175,17 @@ function Editor({ item, onClose, onSaved }: { item: AdminMediaItem; onClose: () 
         </dl>
 
         {err && <p role="alert" className="mt-4 text-sm text-red-300">{err}</p>}
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          {item.status === "ready" && (
+            <button
+              type="button"
+              onClick={makeCover}
+              disabled={busy}
+              className="mr-auto flex h-11 items-center gap-2 border border-gold-400/60 px-4 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-gold-300 hover:bg-gold-400/10 disabled:opacity-60"
+            >
+              Use as album cover
+            </button>
+          )}
           <button type="button" onClick={onClose} className="h-11 px-4 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-white/70">
             Cancel
           </button>
@@ -196,6 +221,7 @@ export function MediaLibrary({ storage, flow, access }: { storage: "blob" | "loc
   const [bulkTag, setBulkTag] = useState("");
 
   const [tick, setTick] = useState(0);
+  const [uploadTarget, setUploadTarget] = useState<{ date: string; title: string | null } | null>(null);
 
   // Fetch on every filter change / refresh; stale responses are discarded.
   useEffect(() => {
@@ -306,7 +332,27 @@ export function MediaLibrary({ storage, flow, access }: { storage: "blob" | "loc
         </dl>
       )}
 
-      <MediaUploader storage={storage} flow={flow} access={access} onDone={refresh} />
+      <AlbumsPanel
+        refreshKey={tick}
+        onUpload={(a) => {
+          setUploadTarget(a);
+          document.getElementById("up-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        onView={(date) => {
+          update({ date, page: 1 });
+          document.getElementById("lib-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+      />
+
+      <MediaUploader
+        storage={storage}
+        flow={flow}
+        access={access}
+        onDone={refresh}
+        eventDate={uploadTarget?.date ?? ""}
+        onEventDateChange={(date) => setUploadTarget(date ? { date, title: uploadTarget?.date === date ? uploadTarget.title : null } : null)}
+        albumTitle={uploadTarget?.title}
+      />
 
       <section aria-labelledby="lib-title">
         <div className="flex flex-wrap items-center gap-2">

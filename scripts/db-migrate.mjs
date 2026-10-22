@@ -39,7 +39,11 @@ const files = fs
   .sort()
   .map((f) => {
     const sql = fs.readFileSync(path.join(DIR, f), "utf8");
-    return { id: f.replace(/\.sql$/, ""), sql, checksum: crypto.createHash("sha256").update(sql).digest("hex") };
+    const hash = (s) => crypto.createHash("sha256").update(s).digest("hex");
+    const lf = sql.replace(/\r\n/g, "\n");
+    // New migrations are recorded with the LF form. Line endings alone never count as a change:
+    // a file applied from a CRLF (Windows) checkout matches its LF copy and vice versa.
+    return { id: f.replace(/\.sql$/, ""), sql, checksum: hash(lf), accepted: new Set([hash(lf), hash(sql), hash(lf.replace(/\n/g, "\r\n"))]) };
   });
 
 const tablesCreatedBy = (sql) => [...sql.matchAll(/CREATE\s+(?:TABLE|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)].map((m) => m[1].toLowerCase());
@@ -72,7 +76,7 @@ async function main() {
       : [];
     const appliedById = new Map(applied.map((r) => [r.id, r]));
 
-    const changed = files.filter((f) => appliedById.has(f.id) && appliedById.get(f.id).checksum !== f.checksum);
+    const changed = files.filter((f) => appliedById.has(f.id) && !f.accepted.has(String(appliedById.get(f.id).checksum).trim()));
     if (changed.length) {
       throw new Error(`Applied migration file(s) changed since they ran: ${changed.map((f) => f.id).join(", ")}. Add a new migration instead of editing an applied one.`);
     }

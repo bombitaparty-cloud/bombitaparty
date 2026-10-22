@@ -37,18 +37,21 @@ function Unavailable() {
 const nyDate = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(iso));
 
 /**
- * One album per night. Title + place come from the event linked to the photos
- * (event_slug), else the site's event on that date, else the night's category.
+ * One album per night. Title + place: the album details saved in Admin →
+ * Media → Albums, else the event linked to the photos (event_slug), else the
+ * site's event on that date, else the night's category.
  */
 function toAlbums(facets: GalleryFacets, events: BombitaEvent[]): GalleryAlbum[] {
   const bySlug = new Map(events.map((e) => [e.slug, e]));
   const byDate = new Map(events.map((e) => [nyDate(e.startsAt), e]));
   return facets.dates.map((d) => {
     const ev = (d.event && bySlug.get(d.event)) || byDate.get(d.date);
+    const city = d.city ?? "New York";
+    const venue = d.venue ?? ev?.venue.name ?? null;
     return {
       ...d,
-      title: ev?.title ?? d.category ?? "Bombita Party",
-      place: ev ? `${ev.venue.name}, New York` : "New York",
+      title: d.albumTitle ?? ev?.title ?? d.category ?? "Bombita Party",
+      place: venue ? `${venue}, ${city}` : city,
     };
   });
 }
@@ -74,7 +77,12 @@ async function AlbumsSection() {
     log.error("photos.albums_failed", { error: err instanceof Error ? err.message : String(err) });
   }
   if (!data) return <Unavailable />;
-  return <NightAlbums albums={toAlbums(data[0], data[1])} categories={data[0].categories} />;
+  const albums = toAlbums(data[0], data[1]);
+  const categories = [...new Set(albums.map((a) => a.category).filter((c): c is string => Boolean(c)))].map((name) => ({
+    name,
+    count: albums.filter((a) => a.category === name).length,
+  }));
+  return <NightAlbums albums={albums} categories={categories} />;
 }
 
 async function gatePreviews() {

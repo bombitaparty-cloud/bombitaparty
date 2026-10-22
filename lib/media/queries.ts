@@ -133,12 +133,20 @@ export async function galleryFacets(filters: Pick<GalleryFilters, "type" | "cate
       `SELECT a.gallery_date AS date, count(*)::int AS count,
               count(*) FILTER (WHERE a.media_type = 'image')::int AS images,
               count(*) FILTER (WHERE a.media_type = 'video')::int AS videos,
-              mode() WITHIN GROUP (ORDER BY a.category) AS category,
+              coalesce(al.category, mode() WITHIN GROUP (ORDER BY a.category)) AS category,
               max(a.event_slug) AS event,
-              (SELECT coalesce(v.cdn_url, '/api/media/' || c.id || '/thumb') FROM media_public_assets c JOIN media_public_variants v ON v.asset_id = c.id AND v.kind = 'thumb'
-                 WHERE c.gallery_date = a.gallery_date ORDER BY c.display_order, c.id LIMIT 1) AS cover
-         FROM media_public_assets a ${W}
-        GROUP BY a.gallery_date ORDER BY a.gallery_date DESC`,
+              al.title AS "albumTitle", al.venue, al.city,
+              coalesce(
+                (SELECT coalesce(v.cdn_url, '/api/media/' || v.asset_id || '/thumb') FROM media_public_variants v
+                  WHERE v.asset_id = al.cover_asset_id AND v.kind = 'thumb'),
+                (SELECT coalesce(v.cdn_url, '/api/media/' || c.id || '/thumb') FROM media_public_assets c JOIN media_public_variants v ON v.asset_id = c.id AND v.kind = 'thumb'
+                  WHERE c.gallery_date = a.gallery_date ORDER BY c.display_order, c.id LIMIT 1)
+              ) AS cover
+         FROM media_public_assets a
+         LEFT JOIN media_public_albums al ON al.album_date = a.gallery_date
+         ${W}
+        GROUP BY a.gallery_date, al.title, al.venue, al.city, al.category, al.cover_asset_id
+        ORDER BY a.gallery_date DESC`,
       params,
     ),
     db.query(`SELECT category AS name, count(*)::int AS count FROM media_public_assets WHERE category IS NOT NULL GROUP BY category ORDER BY count DESC, category`),
@@ -278,7 +286,11 @@ export async function adminUpdate(ids: string[], patch: MediaPatch): Promise<str
     text("description", "description");
     text("category", "category");
     text("eventSlug", "event_slug");
-    if (patch.galleryDate) sets.push(`gallery_date = ${p(patch.galleryDate)}`, `date_source = 'manual'`);
+    if (patch.galleryDate) {
+      sets.push(`gallery_date = ${p(patch.galleryDate)}`, `date_source = 'manual'`);
+      // A photo moved to another night can't stay the cover of its old album.
+      await c.query("UPDATE media_albums SET cover_asset_id = NULL WHERE cover_asset_id = ANY($1::uuid[]) AND album_date <> $2", [ids, patch.galleryDate]);
+    }
     if (patch.displayOrder !== undefined) sets.push(`display_order = ${p(patch.displayOrder)}`);
     if (patch.visibility === "published") sets.push(`visibility = 'published'`, `published_at = coalesce(published_at, now())`);
     if (patch.visibility === "draft") sets.push(`visibility = 'draft'`);
@@ -371,4 +383,83 @@ export async function mediaStats(): Promise<MediaStats> {
     blobBytes: Number(v.rows[0].blob_bytes),
     budgetBytes: Number(process.env.MEDIA_STORAGE_BUDGET_BYTES ?? 900 * 1024 * 1024),
   };
+}
+
+/* ── Albums (one per night) ─────────────────────────────────────────────── */
+
+export interface AdminAlbum {
+  date: string;
+  title: string | null;
+  venue: string | null;
+  city: string;
+  category: string | null;
+  description: string | null;
+  coverAssetId: string | null;
+  /** Thumbnail shown in the admin: the chosen cover, else the night's first ready photo. */
+  thumb: string | null;
+  total: number;
+  published: number;
+  /** false when photos exist for the date but no album details were saved yet. */
+  saved: boolean;
+}
+
+/** Every night that has photos or saved album details, newest first. */
+export async function adminAlbums(): Promise<AdminAlbum[]> {
+  const { rows } = await adminDb().query(`
+    WITH d AS (
+      SELECT gallery_date AS date, count(*)::int AS total,
+             count(*) FILTER (WHERE visibility = 'published' AND status = 'ready')::int AS published,
+             (array_agg(id ORDER BY display_order, id) FILTER (WHERE status = 'ready'))[1] AS first_id
+        FROM media_assets GROUP BY gallery_date
+    )
+    SELECT coalesce(al.album_date, d.date) AS date, al.title, al.venue, coalesce(al.city, 'New York') AS city,
+           al.category, al.description, al.cover_asset_id, coalesce(al.cover_asset_id, d.first_id) AS thumb_id,
+           coalesce(d.total, 0) AS total, coalesce(d.published, 0) AS published, (al.album_date IS NOT NULL) AS saved
+      FROM d FULL OUTER JOIN media_albums al ON al.album_date = d.date
+     ORDER BY 1 DESC`);
+  return rows.map((r) => ({
+    date: r.date,
+    title: r.title ?? null,
+    venue: r.venue ?? null,
+    city: r.city,
+    category: r.category ?? null,
+    description: r.description ?? null,
+    coverAssetId: r.cover_asset_id ?? null,
+    thumb: r.thumb_id ? `/api/media/${r.thumb_id}/thumb` : null,
+    total: r.total,
+    published: r.published,
+    saved: r.saved,
+  }));
+}
+
+export async function saveAlbum(a: { date: string; title: string; venue: string | null; city: string | null; category: string | null; description: string | null }) {
+  await adminDb().query(
+    `INSERT INTO media_albums (album_date, title, venue, city, category, description)
+     VALUES ($1, $2, $3, coalesce($4, 'New York'), $5, $6)
+     ON CONFLICT (album_date) DO UPDATE SET title = EXCLUDED.title, venue = EXCLUDED.venue, city = EXCLUDED.city,
+       category = EXCLUDED.category, description = EXCLUDED.description`,
+    [a.date, a.title, a.venue, a.city, a.category, a.description],
+  );
+}
+
+/**
+ * Makes a photo its night's album thumbnail. The photo must belong to that
+ * night; an album row is created (titled "Bombita Party") if none exists yet.
+ * Returns false when the photo doesn't exist or isn't ready.
+ */
+export async function setAlbumCover(assetId: string): Promise<{ date: string } | null> {
+  const { rows } = await adminDb().query(
+    `INSERT INTO media_albums (album_date, title, cover_asset_id)
+       SELECT gallery_date, 'Bombita Party', id FROM media_assets WHERE id = $1 AND status = 'ready'
+     ON CONFLICT (album_date) DO UPDATE SET cover_asset_id = EXCLUDED.cover_asset_id
+     RETURNING album_date AS date`,
+    [assetId],
+  );
+  return rows[0] ? { date: rows[0].date } : null;
+}
+
+/** Removes album details only — the night's photos are untouched. */
+export async function deleteAlbum(date: string): Promise<boolean> {
+  const r = await adminDb().query("DELETE FROM media_albums WHERE album_date = $1", [date]);
+  return (r.rowCount ?? 0) > 0;
 }
