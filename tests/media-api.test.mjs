@@ -254,14 +254,18 @@ test("stats add up", async () => {
   assert.ok(s.webBytes > 0 && s.originalBytes > s.webBytes);
 });
 
-test("gallery page: gate for visitors, date-grouped gallery for members", async () => {
+test("gallery page: gate for visitors, one album per night for members", async () => {
   const visitor = await (await get("/photos")).text();
   assert.match(visitor, /Unlock the/);
   const member = await (await get("/photos", { headers: { cookie: "bombita_member=1" } })).text();
-  assert.match(member, /Saturday, September 12, 2026/);
-  assert.match(member, /photos?/);
-  const filtered = await (await get("/photos?type=video", { headers: { cookie: "bombita_member=1" } })).text();
-  assert.match(filtered, /Sunday, September 20, 2026/);
-  assert.doesNotMatch(filtered, /Saturday, September 12, 2026<\/h3>/);
+  const facets = (await json("/api/gallery/dates")).body;
+  // One card per night; the Sept 12 night takes its title + venue from the site's event that day.
+  assert.match(member, /Cerrando el Verano, Radio Hotel, New York, September 2026, \d+ photos/);
+  // Every night with published media gets exactly one card (aria-label is a single attribute string).
+  const cards = [...member.matchAll(/aria-label="([^"]+, \d+ (?:photos|item))"/g)].map((m) => m[1]);
+  assert.equal(cards.length, facets.dates.length, "one album card per night");
+  for (const d of facets.dates) assert.ok(cards.some((c) => c.endsWith(`, ${d.count} ${d.count === 1 ? "item" : "photos"}`)), `card for ${d.date}`);
+  // Nights without an event fall back to their category.
+  assert.match(member, /Day Parties, New York, September 2026/);
 });
 

@@ -42,6 +42,15 @@ export interface GalleryDateSummary {
   images: number;
   videos: number;
   cover: string | null;
+  /** Most common category that night, and the linked event slug (if any). */
+  category: string | null;
+  event: string | null;
+}
+
+/** A gallery album = one night: shown as a card, opened as a sheet. */
+export interface GalleryAlbum extends GalleryDateSummary {
+  title: string;
+  place: string;
 }
 
 export interface GalleryFacets {

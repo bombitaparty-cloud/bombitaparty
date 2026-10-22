@@ -144,8 +144,9 @@ export function MediaLightbox({
             </motion.figure>
           </AnimatePresence>
 
-          <p className="eyebrow absolute bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-mute tabular-nums">
-            {longDate(item.date)} · {index! + 1} / {Math.max(total ?? 0, items.length)}
+          <p className="eyebrow absolute inset-x-4 bottom-5 text-center text-mute tabular-nums">
+            <span className="hidden sm:inline">{longDate(item.date)} · </span>
+            {index! + 1} / {Math.max(total ?? 0, items.length)}
           </p>
           {items.length > 1 && (
             <>

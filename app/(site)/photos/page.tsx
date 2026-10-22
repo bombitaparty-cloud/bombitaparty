@@ -8,34 +8,20 @@ import { Button } from "@/components/ui/Button";
 import { BrushUnderline } from "@/components/ui/Logo";
 import { ImageReveal, SplitReveal } from "@/components/animations/Reveal";
 import { GalleryGate } from "@/components/gallery/GalleryGate";
-import { DateGallery } from "@/components/gallery/DateGallery";
-import { GallerySkeleton } from "@/components/gallery/GallerySkeleton";
+import { NightAlbums } from "@/components/gallery/NightAlbums";
 import { isMember } from "@/lib/member";
 import { isDatabaseConfigured } from "@/lib/db";
 import { galleryFacets, listPublished } from "@/lib/media/queries";
-import { parseFilters } from "@/lib/media/http";
+import { getAllEvents } from "@/lib/cms";
 import { log } from "@/lib/log";
-import type { GalleryFilters } from "@/lib/media/types";
+import type { GalleryAlbum, GalleryFacets } from "@/lib/media/types";
+import type { BombitaEvent } from "@/lib/cms/types";
 
 export const metadata: Metadata = {
   title: "Event Gallery",
-  description: "Real people. Real vibes. Real Bombita. Photo and video recaps from Bombita nights across New York City, by date.",
+  description: "Real people. Real vibes. Real Bombita. Photo recaps from every Bombita night in New York City — pick a night, open the album.",
   alternates: { canonical: "/photos" },
 };
-
-/** Ignore malformed filter params instead of failing the page. */
-function safeFilters(sp: Record<string, string | string[] | undefined>): GalleryFilters {
-  const usp = new URLSearchParams();
-  for (const k of ["date", "from", "to", "type", "category", "tag"]) {
-    const v = sp[k];
-    if (typeof v === "string" && v) usp.set(k, v);
-  }
-  try {
-    return parseFilters(usp);
-  } catch {
-    return {};
-  }
-}
 
 function Unavailable() {
   return (
@@ -47,20 +33,48 @@ function Unavailable() {
   );
 }
 
-/** Streams in behind the hero: first page of thumbnails + date headings. */
-async function GallerySection({ filters }: { filters: GalleryFilters }) {
+/** New York calendar date of an event start. */
+const nyDate = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(iso));
+
+/**
+ * One album per night. Title + place come from the event linked to the photos
+ * (event_slug), else the site's event on that date, else the night's category.
+ */
+function toAlbums(facets: GalleryFacets, events: BombitaEvent[]): GalleryAlbum[] {
+  const bySlug = new Map(events.map((e) => [e.slug, e]));
+  const byDate = new Map(events.map((e) => [nyDate(e.startsAt), e]));
+  return facets.dates.map((d) => {
+    const ev = (d.event && bySlug.get(d.event)) || byDate.get(d.date);
+    return {
+      ...d,
+      title: ev?.title ?? d.category ?? "Bombita Party",
+      place: ev ? `${ev.venue.name}, New York` : "New York",
+    };
+  });
+}
+
+function AlbumsSkeleton() {
+  return (
+    <div aria-hidden>
+      <div className="mb-6 h-12 w-64 animate-pulse bg-white/[0.06]" />
+      <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 md:gap-3 xl:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => <div key={i} className="aspect-[4/5] animate-pulse bg-white/[0.05]" />)}
+      </div>
+    </div>
+  );
+}
+
+/** Streams in behind the hero: one card per night. */
+async function AlbumsSection() {
   if (!isDatabaseConfigured()) return <Unavailable />;
-  let data: [Awaited<ReturnType<typeof listPublished>>, Awaited<ReturnType<typeof galleryFacets>>] | null = null;
+  let data: [GalleryFacets, BombitaEvent[]] | null = null;
   try {
-    data = await Promise.all([
-      listPublished(filters, { limit: 30 }),
-      galleryFacets({ type: filters.type, category: filters.category, tag: filters.tag }),
-    ]);
+    data = await Promise.all([galleryFacets(), getAllEvents()]);
   } catch (err) {
-    log.error("photos.gallery_failed", { error: err instanceof Error ? err.message : String(err) });
+    log.error("photos.albums_failed", { error: err instanceof Error ? err.message : String(err) });
   }
   if (!data) return <Unavailable />;
-  return <DateGallery initial={data[0]} facets={data[1]} filters={filters} />;
+  return <NightAlbums albums={toAlbums(data[0], data[1])} categories={data[0].categories} />;
 }
 
 async function gatePreviews() {
@@ -75,9 +89,8 @@ async function gatePreviews() {
   return { previews: Object.values(bombita.stills).slice(0, 6), albumCount: 0, photoCount: 0 };
 }
 
-export default async function PhotosPage({ searchParams }: PageProps<"/photos">) {
-  const [sp, member] = await Promise.all([searchParams, isMember()]);
-  const filters = safeFilters(sp);
+export default async function PhotosPage() {
+  const member = await isMember();
   const instagram = socials.find((s) => s.network === "instagram");
 
   return (
@@ -105,6 +118,7 @@ export default async function PhotosPage({ searchParams }: PageProps<"/photos">)
             Gallery
           </SplitReveal>
           <p className="mt-6 text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-white/90 md:text-sm">Real people. Real vibes. Real Bombita.</p>
+          <p className="mt-3 max-w-md text-sm text-white/70 md:text-base">Every Bombita night, documented. Pick a night, then open the album.</p>
         </div>
       </section>
 
@@ -113,9 +127,9 @@ export default async function PhotosPage({ searchParams }: PageProps<"/photos">)
         <GalleryGate {...await gatePreviews()} />
       ) : (
         <>
-          <section aria-label="Event gallery by date" className="container-lux pb-20 pt-8 md:pb-28">
-            <Suspense key={JSON.stringify(filters)} fallback={<GallerySkeleton rows={3} />}>
-              <GallerySection filters={filters} />
+          <section aria-label="Event albums" className="container-lux pb-20 pt-8 md:pb-28">
+            <Suspense fallback={<AlbumsSkeleton />}>
+              <AlbumsSection />
             </Suspense>
           </section>
 

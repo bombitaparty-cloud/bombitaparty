@@ -133,6 +133,8 @@ export async function galleryFacets(filters: Pick<GalleryFilters, "type" | "cate
       `SELECT a.gallery_date AS date, count(*)::int AS count,
               count(*) FILTER (WHERE a.media_type = 'image')::int AS images,
               count(*) FILTER (WHERE a.media_type = 'video')::int AS videos,
+              mode() WITHIN GROUP (ORDER BY a.category) AS category,
+              max(a.event_slug) AS event,
               (SELECT coalesce(v.cdn_url, '/api/media/' || c.id || '/thumb') FROM media_public_assets c JOIN media_public_variants v ON v.asset_id = c.id AND v.kind = 'thumb'
                  WHERE c.gallery_date = a.gallery_date ORDER BY c.display_order, c.id LIMIT 1) AS cover
          FROM media_public_assets a ${W}
