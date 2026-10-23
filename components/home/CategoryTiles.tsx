@@ -7,12 +7,49 @@ import { ImageReveal } from "@/components/animations/Reveal";
 const tiles = [
   { title: "Events", sub: "Upcoming parties", href: "/events", image: reel(12).poster, video: reel(12).src, alt: "Live band on the Bombita Party stage" },
   { title: "Store", sub: "Bombita Wear", href: "/wear", image: img.capBack, alt: "Cap and hoodie streetwear" },
-  { title: "Photos", sub: "The vibes", href: "/photos", image: bombita.stills.stageBanner, alt: "Live band under the Bombita Party banner" },
+  { title: "Photos", sub: "Real people. Real vibes.", href: "/photos", image: bombita.stills.stageBanner, alt: "Live band under the Bombita Party banner" },
   { title: "Videos", sub: "Relive the moments", href: "/videos", image: reel(9).poster, video: reel(9).src, alt: "Accordion player performing at Bombita Party" },
 ];
 
-/** Four image doors straight under the hero. */
-export function CategoryTiles() {
+export interface TilePhoto {
+  src: string;
+  srcSet?: string;
+  alt: string;
+}
+
+const STEP = 4; // seconds each photo stays up in the Photos tile
+
+/** Photos tile: a slow crossfade of real gallery photos (CSS only; still for reduced motion). */
+function PhotoCrossfade({ photos }: { photos: TilePhoto[] }) {
+  // Always 4 slots (the keyframes are written for quarters); repeat photos when fewer.
+  const slots = Array.from({ length: 4 }, (_, i) => photos[i % photos.length]);
+  const n = slots.length;
+  return (
+    <span className="absolute inset-0 transition-transform duration-[1.6s] ease-[var(--ease-expo)] group-hover:scale-110">
+      {slots.map((p, i) => (
+        // eslint-disable-next-line @next/next/no-img-element -- pre-optimized WebP renditions from the media API
+        <img
+          key={`${i}-${p.src}`}
+          src={p.src}
+          srcSet={p.srcSet}
+          sizes="(min-width: 1024px) 25vw, 50vw"
+          alt={i === 0 ? p.alt : ""}
+          loading="lazy"
+          decoding="async"
+          className="tile-fade img-cine absolute inset-0 h-full w-full object-cover"
+          style={{
+            animationDuration: `${n * STEP}s`,
+            // Negative delays: photo i is mid-cycle so exactly one is visible at any moment.
+            animationDelay: i === 0 ? "0s" : `-${(n - i) * STEP}s`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Four image doors under the upcoming events. The Photos door previews the real gallery. */
+export function CategoryTiles({ photos = [] }: { photos?: TilePhoto[] }) {
   return (
     <section aria-label="Explore Bombita" className="border-y border-white/10 bg-ink-950 p-2 md:p-3">
       <ul className="grid grid-cols-2 gap-2 md:gap-3 lg:grid-cols-4">
@@ -24,7 +61,12 @@ export function CategoryTiles() {
               className="group relative block aspect-[4/5] overflow-hidden md:aspect-[5/6]"
             >
               <ImageReveal className="absolute inset-0" delay={i * 0.08}>
-                {"video" in t && t.video ? (
+                {t.href === "/photos" && photos.length > 1 ? (
+                  <PhotoCrossfade photos={photos} />
+                ) : t.href === "/photos" && photos.length === 1 ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- pre-optimized WebP rendition
+                  <img src={photos[0].src} srcSet={photos[0].srcSet} sizes="(min-width: 1024px) 25vw, 50vw" alt={photos[0].alt} loading="lazy" decoding="async" className="img-cine absolute inset-0 h-full w-full object-cover transition-transform duration-[1.6s] ease-[var(--ease-expo)] group-hover:scale-110" />
+                ) : "video" in t && t.video ? (
                   <span className="absolute inset-0 transition-transform duration-[1.6s] ease-[var(--ease-expo)] group-hover:scale-110">
                     <LazyLoop src={t.video} poster={t.image} />
                   </span>

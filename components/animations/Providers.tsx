@@ -67,7 +67,7 @@ export function Providers({ children }: { children: ReactNode }) {
       (entries) => entries.forEach((e) => e.target.toggleAttribute("data-offscreen", !e.isIntersecting)),
       { rootMargin: "100px" },
     );
-    const id = window.setTimeout(() => document.querySelectorAll(".animate-marquee, .animate-spin-slow").forEach((el) => io.observe(el)), 300);
+    const id = window.setTimeout(() => document.querySelectorAll(".animate-marquee, .animate-spin-slow, .tile-fade").forEach((el) => io.observe(el)), 300);
     return () => {
       window.clearTimeout(id);
       io.disconnect();

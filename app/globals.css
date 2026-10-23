@@ -180,7 +180,8 @@ html.has-cursor input, html.has-cursor textarea, html.has-cursor select { cursor
 /* Infinite CSS loops pause while off-screen (toggled by Providers). */
 [data-offscreen].animate-marquee,
 [data-offscreen].animate-spin-slow,
-[data-offscreen] .animate-spin-slow { animation-play-state: paused; }
+[data-offscreen] .animate-spin-slow,
+[data-offscreen].tile-fade { animation-play-state: paused; }
 @keyframes grain {
   0% { transform: translate(0, 0); }
   20% { transform: translate(-3%, 2%); }
@@ -200,6 +201,18 @@ html.has-cursor input, html.has-cursor textarea, html.has-cursor select { cursor
 /* Marquee */
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .animate-marquee { animation: marquee var(--marquee-duration, 40s) linear infinite; }
+
+/* Photos tile on the homepage: 4 stacked photos, each visible for a quarter of the cycle. */
+@keyframes tile-fade {
+  0%, 22% { opacity: 1; }
+  27%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.tile-fade { animation-name: tile-fade; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .tile-fade { animation: none; opacity: 0; }
+  .tile-fade:first-child { opacity: 1; }
+}
 
 @keyframes spark {
   from { transform: scale(0.82) rotate(-8deg); opacity: 0.85; }
