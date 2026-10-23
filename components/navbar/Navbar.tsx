@@ -112,18 +112,43 @@ export function Navbar() {
   const [hidden, setHidden] = useState(false);
   const [open, setOpen] = useState(false);
 
+  // Hide on scroll down, show on scroll up — with a 24px dead zone per direction so
+  // momentum/smooth-scroll micro-steps can't toggle the bar back and forth (flicker).
   useEffect(() => {
+    const THRESHOLD = 24;
     let last = window.scrollY;
-    const onScroll = () => {
+    let anchor = last; // where the current scroll direction started
+    let dir = 0; // 1 = down, -1 = up
+    let frame = 0;
+    const update = () => {
+      frame = 0;
       const y = window.scrollY;
       setScrolled(y > 40);
-      setHidden(y > 480 && y > last + 2);
-      if (y < last - 2) setHidden(false);
+      if (y <= 480) {
+        setHidden(false);
+      } else {
+        const d = y - last;
+        if (d > 0 && dir !== 1) {
+          dir = 1;
+          anchor = last;
+        } else if (d < 0 && dir !== -1) {
+          dir = -1;
+          anchor = last;
+        }
+        if (dir === 1 && y - anchor > THRESHOLD) setHidden(true);
+        if (dir === -1 && anchor - y > THRESHOLD) setHidden(false);
+      }
       last = y;
     };
-    onScroll();
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
   // Close the menu whenever the route changes.
@@ -157,7 +182,7 @@ export function Navbar() {
       <header
         ref={ref}
         className={cn(
-          "fixed inset-x-0 top-0 z-[100] transition-[transform,background-color,border-color,backdrop-filter] duration-700 ease-[var(--ease-expo)]",
+          "fixed inset-x-0 top-0 z-[100] transition-[transform,background-color,border-color] duration-[350ms] ease-out will-change-transform",
           scrolled && !open
             ? "border-b border-gold-500/20 bg-ink-950/95 md:bg-ink-950/75 md:backdrop-blur-xl"
             : "border-b border-transparent bg-gradient-to-b from-ink-950/80 to-transparent",
