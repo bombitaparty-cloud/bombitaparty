@@ -208,20 +208,26 @@ export function Hero({ nextEvent }: { nextEvent?: BombitaEvent }) {
           </p>
         </div>
 
-        <div data-cta className="mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center">
+        {/* Phones: stacked · tablets/laptops: 2 × 2 · ≥1280px: one row */}
+        <div data-cta className="mt-8 grid w-full gap-3 sm:w-auto sm:grid-cols-2 xl:flex xl:items-center xl:justify-center">
           <div data-hero-hide>
-            <Button href={ticketUrlFor(nextEvent)} size="lg" className="w-full sm:w-auto">
+            <Button href={ticketUrlFor(nextEvent)} size="lg" className="w-full xl:w-auto">
               Get Tickets
             </Button>
           </div>
           <div data-hero-hide>
-            <Button href="/events" variant="light" size="lg" className="w-full sm:w-auto">
+            <Button href="/events" variant="light" size="lg" className="w-full xl:w-auto">
               Upcoming Events
             </Button>
           </div>
           <div data-hero-hide>
-            <Button href="/wear" variant="red" size="lg" className="w-full sm:w-auto">
+            <Button href="/wear" variant="red" size="lg" className="w-full xl:w-auto">
               Bombita Wear
+            </Button>
+          </div>
+          <div data-hero-hide>
+            <Button href="/birthdays" variant="outline" size="lg" className="w-full xl:w-auto">
+              Celebrate a Birthday
             </Button>
           </div>
         </div>
