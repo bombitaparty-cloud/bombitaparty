@@ -19,8 +19,8 @@ export default async function Home() {
   return (
     <>
       <Hero nextEvent={featured} />
-      <CategoryTiles />
       <EventsSection upcoming={upcoming} />
+      <CategoryTiles />
       <HomeGallery />
       <WearFeature products={products} />
       <ExperienceVideo />
